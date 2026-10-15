@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiniLLM — Complete Deep Dive Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2230;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #7ee787;
+    --accent3: #f78166;
+    --accent4: #d2a8ff;
+    --accent5: #ffa657;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15px; }
+  @media print {
+    body { background: #fff; color: #111; font-size: 12px; }
+    .no-print { display: none; }
+    .page-break { page-break-before: always; }
+    pre, code { background: #f4f4f4 !important; color: #111 !important; border: 1px solid #ccc !important; }
+    .hero { background: #1a1a2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .card { background: #f9f9f9 !important; border: 1px solid #ddd !important; color: #111 !important; }
+    h1,h2,h3,h4 { color: #111 !important; }
+  }
+  .container { max-width: 1000px; margin: 0 auto; padding: 0 32px; }
+  .hero { background: linear-gradient(135deg,#0d1117 0%,#1a1a3e 40%,#0d2137 100%); padding: 80px 0 60px; border-bottom: 1px solid var(--border); }
+  .hero-tag { display: inline-block; background: rgba(88,166,255,.15); border: 1px solid rgba(88,166,255,.3); color: var(--accent); padding: 4px 14px; border-radius: 100px; font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 20px; }
+  .hero h1 { font-family: 'Playfair Display',serif; font-size: clamp(36px,5vw,56px); font-weight: 700; line-height: 1.15; background: linear-gradient(135deg,#e6edf3 0%,#58a6ff 60%,#d2a8ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 16px; }
+  .hero p { color: var(--muted); font-size: 17px; max-width: 620px; }
+  .hero-meta { display: flex; gap: 24px; margin-top: 32px; flex-wrap: wrap; }
+  .hero-meta span { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 32px; margin: 40px 0; }
+  .toc h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 16px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 6px 0; }
+  .toc a { color: var(--accent); text-decoration: none; font-size: 14px; }
+  section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  .section-header { display: flex; align-items: center; gap: 16px; margin-bottom: 32px; }
+  .section-num { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; }
+  h2 { font-size: 28px; font-weight: 700; }
+  h3 { font-size: 19px; font-weight: 600; margin: 28px 0 12px; color: var(--text); }
+  h4 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; color: var(--accent4); }
+  p { margin-bottom: 14px; color: #c9d1d9; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin: 20px 0; }
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; overflow-x: auto; font-family: 'JetBrains Mono',monospace; font-size: 13px; line-height: 1.65; margin: 16px 0; }
+  code { font-family: 'JetBrains Mono',monospace; font-size: 13px; }
+  .ic { background: rgba(88,166,255,.1); border: 1px solid rgba(88,166,255,.2); padding: 1px 7px; border-radius: 4px; color: var(--accent); font-family: 'JetBrains Mono',monospace; font-size: 12.5px; }
+  .kw  { color: #ff7b72; }
+  .fn  { color: #d2a8ff; }
+  .st  { color: #a5d6ff; }
+  .cm  { color: #8b949e; font-style: italic; }
+  .nm  { color: #79c0ff; }
+  .formula { background: var(--surface2); border: 1px solid var(--border); border-left: 3px solid var(--accent4); border-radius: 8px; padding: 16px 20px; font-family: 'JetBrains Mono',monospace; font-size: 14px; margin: 16px 0; color: var(--accent4); }
+  .pipeline { display: flex; align-items: center; background: var(--surface2); border-radius: 12px; padding: 20px; margin: 20px 0; overflow-x: auto; flex-wrap: wrap; gap: 4px; }
+  .flow-box { background: var(--surface); border: 1.5px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 500; white-space: nowrap; text-align: center; }
+  .arrow { color: var(--muted); padding: 0 4px; font-size: 18px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th { background: var(--surface2); padding: 10px 14px; text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  td { padding: 10px 14px; border-top: 1px solid var(--border); color: #c9d1d9; }
+  .callout { display: flex; gap: 14px; padding: 16px 20px; border-radius: 10px; margin: 20px 0; align-items: flex-start; }
+  .callout-icon { font-size: 20px; flex-shrink: 0; }
+  .callout-blue   { background: rgba(88,166,255,.08);  border-left: 3px solid #58a6ff; }
+  .callout-green  { background: rgba(126,231,135,.08); border-left: 3px solid #7ee787; }
+  .callout-orange { background: rgba(255,166,87,.08);  border-left: 3px solid #ffa657; }
+  .callout-red    { background: rgba(247,129,102,.08); border-left: 3px solid #f78166; }
+  .callout p { margin: 0; font-size: 14px; }
+  .step-list { list-style: none; padding: 0; }
+  .step-list li { display: flex; gap: 14px; margin: 12px 0; align-items: flex-start; }
+  .step-num { width: 26px; height: 26px; border-radius: 50%; background: rgba(88,166,255,.15); border: 1.5px solid rgba(88,166,255,.4); color: var(--accent); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .assignment-box { background: linear-gradient(135deg,rgba(88,166,255,.05) 0%,rgba(126,231,135,.05) 100%); border: 1px solid rgba(88,166,255,.25); border-radius: 14px; padding: 28px 32px; margin: 28px 0; }
+  .assignment-box h3 { color: var(--accent); margin-top: 0; }
+  .print-btn { position: fixed; bottom: 28px; right: 28px; background: var(--accent); color: #0d1117; border: none; padding: 12px 24px; border-radius: 100px; font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 4px 20px rgba(88,166,255,.4); z-index: 100; font-family: 'Inter',sans-serif; }
+</style>
+</head>
+<body>
+<button class="print-btn no-print" onclick="window.print()">Save as PDF</button>
+
+<div class="hero">
+  <div class="container">
+    <div class="hero-tag">Week 5 Deep Dive</div>
+    <h1>MiniLLM — Complete Architecture Guide</h1>
+    <p>Every operation, every tensor shape, every design choice explained from first principles — so you can scale, adapt, and extend this model for your assignments.</p>
+    <div class="hero-meta">
+      <span><span class="dot" style="background:#58a6ff"></span>PyTorch</span>
+      <span><span class="dot" style="background:#7ee787"></span>Transformers</span>
+      <span><span class="dot" style="background:#d2a8ff"></span>GQA · RoPE · SwiGLU · RMSNorm</span>
+      <span><span class="dot" style="background:#ffa657"></span>BPE Tokenization</span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+<div class="toc">
+  <h3>Table of Contents</h3>
+  <ol>
+    <li><a href="#s0">The Big Picture — How it all fits together</a></li>
+    <li><a href="#s1">Tokenization — Text to Numbers</a></li>
+    <li><a href="#s2">Token Embeddings — Numbers to Vectors</a></li>
+    <li><a href="#s3">RMSNorm — Stabilizing activations</a></li>
+    <li><a href="#s4">RoPE — Injecting position information</a></li>
+    <li><a href="#s5">Grouped Query Attention (GQA)</a></li>
+    <li><a href="#s6">SwiGLU FFN — Knowledge storage</a></li>
+    <li><a href="#s7">TransformerBlock — Stacking it all</a></li>
+    <li><a href="#s8">MiniLLM — Full forward pass + parameter count</a></li>
+    <li><a href="#s9">Training Loop — Loss, backprop, optimizer</a></li>
+    <li><a href="#s10">Assignment Guide — Scale · New Data · BPE</a></li>
+  </ol>
+</div>
+
+<!-- ── 00 BIG PICTURE ── -->
+<section id="s0">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(88,166,255,.15);color:#58a6ff;">00</div>
+    <h2>The Big Picture</h2>
+  </div>
+  <p>A language model has <strong>one job</strong>: given a sequence of tokens, predict the next token. Everything in the architecture exists to make this prediction as accurate as possible.</p>
+  <div class="pipeline">
+    <div class="flow-box" style="border-color:#58a6ff;color:#58a6ff;">"To be or"</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box">Tokenizer</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box" style="border-color:#d2a8ff;color:#d2a8ff;">[34,2,12,47]</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box">Embedding</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box" style="border-color:#7ee787;color:#7ee787;">[4 x 256] tensor</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box">4x TransformerBlock</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box">RMSNorm + LM Head</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box" style="border-color:#ffa657;color:#ffa657;">Logits [4 x 65]</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box" style="border-color:#f78166;color:#f78166;">predict " not"</div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <h4>Key Numbers in our model</h4>
+      <table>
+        <tr><th>Hyperparameter</th><th>Value</th><th>Meaning</th></tr>
+        <tr><td><code>vocab_size</code></td><td>65</td><td>Unique characters</td></tr>
+        <tr><td><code>d_model</code></td><td>256</td><td>Hidden dimension</td></tr>
+        <tr><td><code>n_layers</code></td><td>4</td><td>Transformer blocks</td></tr>
+        <tr><td><code>n_heads</code></td><td>8</td><td>Query heads</td></tr>
+        <tr><td><code>n_kv_heads</code></td><td>2</td><td>Key/Value heads (GQA)</td></tr>
+        <tr><td><code>ffn_hidden_dim</code></td><td>680</td><td>FFN bottleneck</td></tr>
+        <tr><td><code>max_seq_len</code></td><td>256</td><td>Context window</td></tr>
+        <tr><td><code>head_dim</code></td><td>32</td><td>d_model / n_heads</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h4>Architecture Choices (Modern LLM style)</h4>
+      <ul class="step-list">
+        <li><span class="step-num">1</span><div><strong>RMSNorm</strong> — faster than LayerNorm, no mean subtraction</div></li>
+        <li><span class="step-num">2</span><div><strong>RoPE</strong> — rotary positional embeddings, generalizes better</div></li>
+        <li><span class="step-num">3</span><div><strong>GQA</strong> — fewer KV heads, reduces memory by 4x</div></li>
+        <li><span class="step-num">4</span><div><strong>SwiGLU</strong> — smooth gating, better gradient flow than ReLU</div></li>
+        <li><span class="step-num">5</span><div><strong>Pre-norm</strong> — normalize before attention, not after</div></li>
+        <li><span class="step-num">6</span><div><strong>Weight tying</strong> — embedding = lm_head, saves params</div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ── 01 TOKENIZATION ── -->
+<section id="s1">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(126,231,135,.15);color:#7ee787;">01</div>
+    <h2>Tokenization — Text to Numbers</h2>
+  </div>
+  <p>Neural networks cannot process text directly. We convert every character to an integer. This is <strong>character-level tokenization</strong> — the simplest form.</p>
+  <h3>Step-by-step Example</h3>
+  <pre><span class="cm"># Shakespeare text has 65 unique characters</span>
+chars = <span class="fn">sorted</span>(<span class="fn">set</span>(text))
+<span class="cm"># chars = ['\n', ' ', '!', '$', '&', "'", ..., 'z']</span>
+
+char_to_idx = {c: i <span class="kw">for</span> i, c <span class="kw">in</span> <span class="fn">enumerate</span>(chars)}
+
+<span class="fn">encode</span>(<span class="st">"Hello"</span>)   <span class="cm"># [20, 43, 50, 50, 53]</span>
+<span class="fn">decode</span>([<span class="nm">20</span>, <span class="nm">43</span>, <span class="nm">50</span>, <span class="nm">50</span>, <span class="nm">53</span>])  <span class="cm"># "Hello"</span></pre>
+
+  <div class="card">
+    <h4>Why shift target by 1? — The training signal</h4>
+    <pre><span class="cm">Input  x:  [T, o, ' ', b,  e,  ' ', o,  r]
+Target y:  [o, ' ', b, e,  ' ', o,  r,  ' ']
+
+At pos 0: model sees "T"    -> must predict "o"
+At pos 1: model sees "To"   -> must predict " "
+At pos 2: model sees "To "  -> must predict "b"
+...
+One sequence gives context_length training examples!</span></pre>
+  </div>
+
+  <div class="callout callout-orange">
+    <div class="callout-icon">&#9889;</div>
+    <div><p><strong>Limitation:</strong> "cat" = 3 char tokens. With BPE, "cat" = 1 token. Shorter sequences = faster attention (O(n^2)) = more context per step. This is Assignment 3.</p></div>
+  </div>
+</section>
+
+<!-- ── 02 EMBEDDINGS ── -->
+<section id="s2">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(210,168,255,.15);color:#d2a8ff;">02</div>
+    <h2>Token Embeddings — Numbers to Vectors</h2>
+  </div>
+  <p><span class="ic">nn.Embedding(vocab_size, d_model)</span> is a <strong>lookup table</strong>. Token ID 20 looks up row 20 of a 65x256 matrix. Each row is a 256-dimensional learned vector for that character.</p>
+  <pre><span class="cm"># The embedding layer is a [65 x 256] learnable matrix</span>
+self.token_emb = nn.<span class="fn">Embedding</span>(<span class="nm">65</span>, <span class="nm">256</span>)
+
+idx   <span class="cm"># shape: [batch=64, seq_len=256]  — integers 0..64</span>
+x = self.token_emb(idx)
+<span class="cm"># shape: [64, 256, 256] = [batch, seq_len, d_model]
+# For each integer, it fetches the corresponding row from the weight matrix</span></pre>
+
+  <div class="card">
+    <h4>What actually happens</h4>
+    <pre><span class="cm">token_emb.weight[20]  # 'H' -> vector of 256 learned floats
+# e.g.: [0.012, -0.341, 0.872, 0.034, ..., -0.201]
+
+token_emb.weight[43]  # 'e' -> different vector
+# e.g.: [0.721,  0.023, -0.112, 0.456, ...,  0.334]
+
+# After training: 'H' and 'h' cluster together,
+# digits form one cluster, vowels another, etc.</span></pre>
+  </div>
+
+  <div class="callout callout-blue">
+    <div class="callout-icon">&#128161;</div>
+    <div><p><strong>Weight Tying:</strong> <span class="ic">self.lm_head.weight = self.token_emb.weight</span> — The output projection reuses the embedding matrix. Saves 65x256 = 16,640 parameters and improves training stability.</p></div>
+  </div>
+</section>
+
+<!-- ── 03 RMSNORM ── -->
+<section id="s3">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(247,129,102,.15);color:#f78166;">03</div>
+    <h2>RMSNorm — Stabilizing Activations</h2>
+  </div>
+  <p>Without normalization, activations explode or vanish through deep layers. RMSNorm rescales each vector to have unit RMS, then applies a learned scale.</p>
+  <div class="formula">RMSNorm(x) = (x / RMS(x)) x weight
+where  RMS(x) = sqrt( mean(x^2) + epsilon )</div>
+
+  <h3>Numerical Example</h3>
+  <pre><span class="cm"># Input vector (d_model=8 for simplicity)</span>
+x = [<span class="nm">3.0</span>, <span class="nm">-1.0</span>, <span class="nm">2.0</span>, <span class="nm">0.5</span>, <span class="nm">-2.0</span>, <span class="nm">1.5</span>, <span class="nm">-0.5</span>, <span class="nm">1.0</span>]
+
+<span class="cm"># Step 1: Square each element</span>
+x_sq = [<span class="nm">9.0</span>, <span class="nm">1.0</span>, <span class="nm">4.0</span>, <span class="nm">0.25</span>, <span class="nm">4.0</span>, <span class="nm">2.25</span>, <span class="nm">0.25</span>, <span class="nm">1.0</span>]
+
+<span class="cm"># Step 2: Mean of squares = 2.719</span>
+<span class="cm"># Step 3: RMS = sqrt(2.719 + 1e-6) = 1.649</span>
+
+<span class="cm"># Step 4: Normalize</span>
+x_norm = [<span class="nm">1.82</span>, <span class="nm">-0.61</span>, <span class="nm">1.21</span>, <span class="nm">0.30</span>, <span class="nm">-1.21</span>, <span class="nm">0.91</span>, <span class="nm">-0.30</span>, <span class="nm">0.61</span>]
+
+<span class="cm"># Step 5: Scale by learned weight (initialized to ones)</span>
+output = x_norm * weight   <span class="cm"># element-wise multiply</span></pre>
+
+  <pre><span class="kw">class</span> <span class="fn">RMSNorm</span>(nn.Module):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, dim, eps=<span class="nm">1e-6</span>):
+        <span class="fn">super</span>().__init__()
+        self.weight = nn.<span class="fn">Parameter</span>(torch.<span class="fn">ones</span>(dim))  <span class="cm"># shape: [d_model]</span>
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x):          <span class="cm"># x: [B, S, d_model]</span>
+        rms = torch.<span class="fn">sqrt</span>(x.<span class="fn">pow</span>(<span class="nm">2</span>).<span class="fn">mean</span>(dim=<span class="nm">-1</span>, keepdim=<span class="kw">True</span>) + self.eps)
+        <span class="cm"># rms: [B, S, 1]  — keepdim=True keeps the last dimension</span>
+        <span class="kw">return</span> (x / rms) * self.weight
+        <span class="cm"># [B,S,d] / [B,S,1] -> [B,S,d]  then * [d] -> [B,S,d]</span></pre>
+</section>
+
+<!-- ── 04 ROPE ── -->
+<section id="s4">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(255,166,87,.15);color:#ffa657;">04</div>
+    <h2>RoPE — Rotary Position Embeddings</h2>
+  </div>
+  <p>Transformers process all tokens in parallel with no built-in order. RoPE encodes position by <strong>rotating</strong> Q and K vectors by an angle proportional to their position. The rotation cancels in Q·K^T to give relative position.</p>
+
+  <div class="card">
+    <h4>The Rotation Formula</h4>
+    <div class="formula">For pair (2i, 2i+1) at position pos:
+  theta_i = 1 / (10000 ^ (2i / head_dim))
+
+  rotated[2i]   = x[2i]*cos(theta*pos) - x[2i+1]*sin(theta*pos)
+  rotated[2i+1] = x[2i]*sin(theta*pos) + x[2i+1]*cos(theta*pos)</div>
+    <p>Low frequency pairs (small theta) rotate slowly = capture global structure. High frequency pairs rotate fast = capture local/nearby patterns.</p>
+  </div>
+
+  <pre><span class="kw">def</span> <span class="fn">precompute_rope_freqs</span>(head_dim, max_seq_len, base=<span class="nm">10000.0</span>):
+    freqs = <span class="nm">1.0</span> / (base ** (torch.<span class="fn">arange</span>(<span class="nm">0</span>, head_dim, <span class="nm">2</span>).<span class="fn">float</span>() / head_dim))
+    <span class="cm"># freqs: [head_dim/2] = [16]  values from 1.0 down to ~0.0001</span>
+
+    positions = torch.<span class="fn">arange</span>(max_seq_len).<span class="fn">float</span>()  <span class="cm"># [256]</span>
+    angles = torch.<span class="fn">outer</span>(positions, freqs)          <span class="cm"># [256, 16]</span>
+    <span class="kw">return</span> torch.<span class="fn">cos</span>(angles), torch.<span class="fn">sin</span>(angles)     <span class="cm"># both [256, 16]</span>
+
+<span class="kw">def</span> <span class="fn">apply_rope</span>(x, cos, sin):
+    <span class="cm"># x: [B, n_heads, S, head_dim]</span>
+    x1 = x[..., ::<span class="nm">2</span>]   <span class="cm"># even dims: [B, H, S, 16]</span>
+    x2 = x[..., <span class="nm">1</span>::<span class="nm">2</span>]  <span class="cm"># odd  dims: [B, H, S, 16]</span>
+
+    cos = cos[:x.shape[<span class="nm">2</span>]].<span class="fn">unsqueeze</span>(<span class="nm">0</span>).<span class="fn">unsqueeze</span>(<span class="nm">0</span>)  <span class="cm"># [1,1,S,16]</span>
+    out1 = x1*cos - x2*sin   <span class="cm"># rotated even</span>
+    out2 = x1*sin + x2*cos   <span class="cm"># rotated odd</span>
+
+    <span class="kw">return</span> torch.<span class="fn">stack</span>([out1, out2], dim=<span class="nm">-1</span>).<span class="fn">flatten</span>(<span class="nm">-2</span>)
+    <span class="cm"># interleave back: [B, H, S, head_dim]</span></pre>
+
+  <div class="callout callout-green">
+    <div class="callout-icon">&#10003;</div>
+    <div><p>RoPE is applied to <strong>Q and K only — not V</strong>. Values carry information; only attention scores (Q.K) need position awareness.</p></div>
+  </div>
+</section>
+
+<!-- ── 05 GQA ── -->
+<section id="s5">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(88,166,255,.15);color:#58a6ff;">05</div>
+    <h2>Grouped Query Attention (GQA)</h2>
+  </div>
+  <p>Standard attention: equal Q, K, V heads. GQA uses <strong>fewer K,V heads</strong> shared across groups of Q heads — 4x less KV memory. Used in LLaMA-2, Mistral, Gemma.</p>
+
+  <div class="card">
+    <h4>Our config: 8 Q heads, 2 KV heads (4:1 ratio)</h4>
+    <pre><span class="cm">Q heads:   Q0  Q1  Q2  Q3  Q4  Q5  Q6  Q7
+                  |               |
+KV heads:       KV0             KV1
+           (serves Q0-Q3)  (serves Q4-Q7)</span></pre>
+  </div>
+
+  <h3>Full Annotated Forward Pass</h3>
+  <pre><span class="kw">def</span> <span class="fn">forward</span>(self, x, rope_cos, rope_sin):
+    b, seq, _ = x.shape         <span class="cm"># x: [64, 256, 256]</span>
+
+    <span class="cm">## STEP 1 — Linear Projections</span>
+    q = self.<span class="fn">q_proj</span>(x)         <span class="cm"># Linear(256->256): [64, 256, 256]</span>
+    k = self.<span class="fn">k_proj</span>(x)         <span class="cm"># Linear(256->64):  [64, 256,  64]</span>
+    v = self.<span class="fn">v_proj</span>(x)         <span class="cm"># Linear(256->64):  [64, 256,  64]</span>
+
+    <span class="cm">## STEP 2 — Reshape into heads</span>
+    q = q.<span class="fn">view</span>(b, seq, <span class="nm">8</span>, <span class="nm">32</span>).<span class="fn">transpose</span>(<span class="nm">1</span>,<span class="nm">2</span>)   <span class="cm"># [64, 8, 256, 32]</span>
+    k = k.<span class="fn">view</span>(b, seq, <span class="nm">2</span>, <span class="nm">32</span>).<span class="fn">transpose</span>(<span class="nm">1</span>,<span class="nm">2</span>)   <span class="cm"># [64, 2, 256, 32]</span>
+    v = v.<span class="fn">view</span>(b, seq, <span class="nm">2</span>, <span class="nm">32</span>).<span class="fn">transpose</span>(<span class="nm">1</span>,<span class="nm">2</span>)   <span class="cm"># [64, 2, 256, 32]</span>
+
+    <span class="cm">## STEP 3 — Apply RoPE to Q and K</span>
+    q = <span class="fn">apply_rope</span>(q, rope_cos, rope_sin)       <span class="cm"># [64, 8, 256, 32]</span>
+    k = <span class="fn">apply_rope</span>(k, rope_cos, rope_sin)       <span class="cm"># [64, 2, 256, 32]</span>
+
+    <span class="cm">## STEP 4 — Expand KV to match Q (n_rep=4)</span>
+    k = <span class="fn">repeat_kv</span>(k, <span class="nm">4</span>)   <span class="cm"># [64, 8, 256, 32]</span>
+    v = <span class="fn">repeat_kv</span>(v, <span class="nm">4</span>)   <span class="cm"># [64, 8, 256, 32]</span>
+
+    <span class="cm">## STEP 5 — Scaled dot-product attention</span>
+    scale = <span class="nm">1.0</span> / math.<span class="fn">sqrt</span>(<span class="nm">32</span>)           <span class="cm"># = 0.177</span>
+    scores = (q @ k.<span class="fn">transpose</span>(<span class="nm">-2</span>,<span class="nm">-1</span>)) * scale
+    <span class="cm"># [64,8,256,32] @ [64,8,32,256] = [64, 8, 256, 256]
+    # scores[b,h,i,j] = "how relevant is token j to token i"</span>
+
+    <span class="cm">## STEP 6 — Causal mask (prevent attending to future)</span>
+    mask = torch.<span class="fn">triu</span>(torch.<span class="fn">ones</span>(seq, seq), diagonal=<span class="nm">1</span>).<span class="fn">bool</span>()
+    <span class="cm"># Example for seq=4:
+    #  [[F,T,T,T],   T = masked (-inf) = future token
+    #   [F,F,T,T],   F = visible (past + present)
+    #   [F,F,F,T],
+    #   [F,F,F,F]]</span>
+    scores = scores.<span class="fn">masked_fill</span>(mask, <span class="fn">float</span>(<span class="st">"-inf"</span>))
+
+    <span class="cm">## STEP 7 — Softmax -> attention weights</span>
+    weights = F.<span class="fn">softmax</span>(scores, dim=<span class="nm">-1</span>)
+    <span class="cm"># [64, 8, 256, 256]  each row sums to 1.0
+    # weights[b,h,i,j] = "fraction of attention from token i to token j"</span>
+
+    <span class="cm">## STEP 8 — Weighted sum of values</span>
+    out = weights @ v
+    <span class="cm"># [64,8,256,256] @ [64,8,256,32] = [64, 8, 256, 32]</span>
+
+    <span class="cm">## STEP 9 — Merge heads + output projection</span>
+    out = out.<span class="fn">transpose</span>(<span class="nm">1</span>,<span class="nm">2</span>).<span class="fn">contiguous</span>().<span class="fn">view</span>(b, seq, <span class="nm">-1</span>)
+    <span class="cm"># [64,8,256,32] -> [64,256,8,32] -> [64,256,256]</span>
+    <span class="kw">return</span> self.<span class="fn">o_proj</span>(out)   <span class="cm"># Linear(256->256): [64, 256, 256]</span></pre>
+
+  <div class="callout callout-orange">
+    <div class="callout-icon">&#128290;</div>
+    <div><p><strong>Why scale by 1/sqrt(head_dim)?</strong> For head_dim=32, random Q,K dot products have variance ~32. Softmax of large values collapses to a one-hot (one token gets all attention). Scaling brings variance back to ~1, giving a spread-out attention distribution.</p></div>
+  </div>
+</section>
+
+<!-- ── 06 SWIGLU ── -->
+<section id="s6">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(126,231,135,.15);color:#7ee787;">06</div>
+    <h2>SwiGLU FFN — Knowledge Storage</h2>
+  </div>
+  <p>If attention is "which tokens to look at", the FFN is "what to do with that information". It stores factual knowledge. The FFN holds about 2/3 of all model parameters.</p>
+
+  <h3>Gate Mechanism — Step by Step</h3>
+  <pre><span class="kw">def</span> <span class="fn">forward</span>(self, x):   <span class="cm"># x: [64, 256, 256]</span>
+
+    gate = F.<span class="fn">silu</span>(self.<span class="fn">w_gate</span>(x))
+    <span class="cm"># w_gate: Linear(256 -> 680)
+    # [64, 256, 680]
+    # SiLU(z) = z * sigmoid(z)  — smooth, allows small negatives</span>
+
+    up = self.<span class="fn">w_up</span>(x)
+    <span class="cm"># [64, 256, 680]  — the "information" path</span>
+
+    hidden = gate * up
+    <span class="cm"># element-wise: [64, 256, 680]
+    # The gate controls how much each dimension flows through</span>
+
+    <span class="kw">return</span> self.<span class="fn">w_down</span>(hidden)
+    <span class="cm"># Linear(680 -> 256): [64, 256, 256]</span></pre>
+
+  <div class="card">
+    <h4>SiLU vs ReLU</h4>
+    <pre><span class="cm">x:      [-2.0,  -1.0,  0.0,  1.0,  2.0]
+ReLU:   [ 0.0,   0.0,  0.0,  1.0,  2.0]  <- kills all negatives (dead neurons)
+SiLU:   [-0.24, -0.27, 0.0, 0.73, 1.76]  <- small negatives pass through
+                                              -> smoother gradients -> better training</span></pre>
+  </div>
+</section>
+
+<!-- ── 07 TRANSFORMERBLOCK ── -->
+<section id="s7">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(210,168,255,.15);color:#d2a8ff;">07</div>
+    <h2>TransformerBlock — Stacking it all</h2>
+  </div>
+  <p>One TransformerBlock = GQA + SwiGLU with <strong>residual connections</strong> and <strong>pre-norm</strong>. This block is repeated 4 times.</p>
+  <div class="pipeline">
+    <div class="flow-box" style="border-color:#58a6ff;color:#58a6ff;">x input</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box">RMSNorm(x)</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box">GQA</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box" style="border-color:#7ee787;color:#7ee787;">x = x + attn_out</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box">RMSNorm(x)</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box">SwiGLU</div>
+    <span class="arrow">&#8594;</span>
+    <div class="flow-box" style="border-color:#7ee787;color:#7ee787;">x = x + ffn_out</div>
+  </div>
+  <pre><span class="kw">def</span> <span class="fn">forward</span>(self, x, rope_cos, rope_sin):  <span class="cm"># x: [B, S, 256]</span>
+
+    <span class="cm"># Sub-layer 1: Attention (pre-norm + residual)</span>
+    x = x + self.<span class="fn">attention</span>(self.<span class="fn">attn_norm</span>(x), rope_cos, rope_sin)
+    <span class="cm"># The +x is the residual connection — preserves original information</span>
+
+    <span class="cm"># Sub-layer 2: FFN (pre-norm + residual)</span>
+    x = x + self.<span class="fn">ffn</span>(self.<span class="fn">ffn_norm</span>(x))
+
+    <span class="kw">return</span> x   <span class="cm"># same shape [B, S, 256]</span></pre>
+
+  <div class="callout callout-blue">
+    <div class="callout-icon">&#128161;</div>
+    <div><p><strong>Why residual connections?</strong> <code>x = x + f(x)</code> means gradients flow directly backwards through <code>+</code> without passing through any transformation. This prevents vanishing gradients and lets us stack 4, 8, 32+ layers.</p></div>
+  </div>
+</section>
+
+<!-- ── 08 MINILLM ── -->
+<section id="s8">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(255,166,87,.15);color:#ffa657;">08</div>
+    <h2>MiniLLM — Full Forward Pass</h2>
+  </div>
+  <pre><span class="kw">def</span> <span class="fn">forward</span>(self, idx, targets=<span class="kw">None</span>):
+    b, seq_len = idx.shape
+    <span class="cm"># idx: [64, 256]  — token IDs (integers)</span>
+
+    x = self.<span class="fn">token_emb</span>(idx)        <span class="cm"># [64, 256, 256]</span>
+
+    <span class="kw">for</span> layer <span class="kw">in</span> self.layers:
+        x = <span class="fn">layer</span>(x, self.rope_cos, self.rope_sin)
+    <span class="cm"># x stays [64, 256, 256] through all 4 blocks</span>
+
+    x = self.<span class="fn">final_norm</span>(x)         <span class="cm"># [64, 256, 256]</span>
+    logits = self.<span class="fn">lm_head</span>(x)       <span class="cm"># [64, 256,  65]</span>
+    <span class="cm"># logits[b, t, v] = score for char v at position t in batch b</span>
+
+    loss = <span class="kw">None</span>
+    <span class="kw">if</span> targets <span class="kw">is not None</span>:
+        loss = F.<span class="fn">cross_entropy</span>(
+            logits.<span class="fn">view</span>(<span class="nm">-1</span>, logits.<span class="fn">size</span>(<span class="nm">-1</span>)),   <span class="cm"># [16384, 65]</span>
+            targets.<span class="fn">view</span>(<span class="nm">-1</span>)                     <span class="cm"># [16384]</span>
+        )
+    <span class="kw">return</span> logits, loss</pre>
+
+  <h3>Parameter Breakdown</h3>
+  <table>
+    <tr><th>Component</th><th>Formula</th><th>Parameters</th></tr>
+    <tr><td>Token Embedding</td><td>65 x 256</td><td>16,640</td></tr>
+    <tr><td>RMSNorm (9 total)</td><td>9 x 256</td><td>2,304</td></tr>
+    <tr><td>Q proj (x4 layers)</td><td>4 x (256 x 256)</td><td>262,144</td></tr>
+    <tr><td>K proj (x4)</td><td>4 x (256 x 64)</td><td>65,536</td></tr>
+    <tr><td>V proj (x4)</td><td>4 x (256 x 64)</td><td>65,536</td></tr>
+    <tr><td>O proj (x4)</td><td>4 x (256 x 256)</td><td>262,144</td></tr>
+    <tr><td>FFN W_gate (x4)</td><td>4 x (256 x 680)</td><td>696,320</td></tr>
+    <tr><td>FFN W_up (x4)</td><td>4 x (256 x 680)</td><td>696,320</td></tr>
+    <tr><td>FFN W_down (x4)</td><td>4 x (680 x 256)</td><td>696,320</td></tr>
+    <tr><td>LM Head</td><td>Shared with embedding (weight tying)</td><td>0</td></tr>
+    <tr><td colspan="2"><strong>Total</strong></td><td><strong>~2.76M params</strong></td></tr>
+  </table>
+</section>
+
+<!-- ── 09 TRAINING ── -->
+<section id="s9">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(247,129,102,.15);color:#f78166;">09</div>
+    <h2>Training Loop — Loss, Backprop, Optimizer</h2>
+  </div>
+  <pre>optimizer = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>(), lr=<span class="nm">3e-4</span>)
+
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(MAX_STEPS):
+
+    xb, yb = <span class="fn">get_batch</span>(<span class="st">"train"</span>, BATCH_SIZE, CONTEXT_LEN)
+    <span class="cm"># xb: [64, 256]   yb: [64, 256]</span>
+
+    logits, loss = <span class="fn">model</span>(xb, yb)
+    <span class="cm"># loss: scalar cross-entropy between predictions and targets</span>
+
+    optimizer.<span class="fn">zero_grad</span>()
+    <span class="cm"># ALWAYS zero gradients first — they accumulate by default</span>
+
+    loss.<span class="fn">backward</span>()
+    <span class="cm"># PyTorch walks computation graph backwards
+    # Computes d(loss)/d(param) for every parameter — chain rule</span>
+
+    torch.nn.utils.<span class="fn">clip_grad_norm_</span>(model.<span class="fn">parameters</span>(), max_norm=<span class="nm">1.0</span>)
+    <span class="cm"># If total gradient norm > 1.0, scale all gradients down
+    # Prevents exploding gradients</span>
+
+    optimizer.<span class="fn">step</span>()
+    <span class="cm"># AdamW: param = param - lr * (momentum / sqrt(variance) + wd * param)
+    # Adaptive per-parameter learning rate — much better than plain SGD</span></pre>
+
+  <div class="card">
+    <h4>Understanding Cross-Entropy Loss</h4>
+    <pre><span class="cm"># logits for one position: [-1.2, 3.4, 0.1, ..., -0.5]  (65 values)
+# target = 43  (character 'e')
+
+# Softmax gives probabilities. Say prob[43] = 0.7
+# Cross-entropy = -log(0.7) = 0.36  (good!)
+
+# If prob[43] = 0.01:
+# Cross-entropy = -log(0.01) = 4.6  (bad!)
+
+# Random baseline (65 chars equally likely):
+# loss = -log(1/65) = 4.17
+
+# After 3000 steps training: loss ~ 1.5-2.0
+# Loss of 0.0 would mean perfect prediction (impossible on real text)</span></pre>
+  </div>
+</section>
+
+<!-- ── 10 ASSIGNMENTS ── -->
+<section id="s10" class="page-break">
+  <div class="section-header">
+    <div class="section-num" style="background:rgba(126,231,135,.15);color:#7ee787;">10</div>
+    <h2>Assignment Guide</h2>
+  </div>
+
+  <div class="assignment-box">
+    <h3>Assignment 1 — Train with More Parameters</h3>
+    <p>Change only the config dict. All other code stays identical.</p>
+    <table>
+      <tr><th>Config</th><th>d_model</th><th>n_layers</th><th>n_heads</th><th>n_kv_heads</th><th>ffn_hidden</th><th>~Params</th></tr>
+      <tr><td>Tiny (current)</td><td>256</td><td>4</td><td>8</td><td>2</td><td>680</td><td>2.76M</td></tr>
+      <tr><td>Small</td><td>384</td><td>6</td><td>6</td><td>2</td><td>1024</td><td>~11M</td></tr>
+      <tr><td>Medium</td><td>512</td><td>8</td><td>8</td><td>2</td><td>1536</td><td>~28M</td></tr>
+    </table>
+    <pre><span class="cm"># Example: Small config</span>
+config = {
+    <span class="st">"vocab_size"</span>:     vocab_size,
+    <span class="st">"d_model"</span>:        <span class="nm">384</span>,
+    <span class="st">"n_layers"</span>:       <span class="nm">6</span>,
+    <span class="st">"n_heads"</span>:        <span class="nm">6</span>,
+    <span class="st">"n_kv_heads"</span>:     <span class="nm">2</span>,    <span class="cm"># 6//2 = 3:1 GQA ratio</span>
+    <span class="st">"ffn_hidden_dim"</span>: <span class="nm">1024</span>,
+    <span class="st">"max_seq_len"</span>:    <span class="nm">256</span>,
+}
+
+<span class="cm"># Rules:
+# d_model % n_heads == 0  (must be exactly divisible)
+# n_heads % n_kv_heads == 0  (must be exactly divisible)
+# ffn_hidden_dim ~ (8/3) * d_model  (SwiGLU rule of thumb)
+# Reduce BATCH_SIZE if GPU runs out of memory</span></pre>
+
+    <div class="callout callout-red">
+      <div class="callout-icon">&#9888;</div>
+      <div><p>On RTX 3050 6GB, a 28M param model at float32 uses ~4GB VRAM. If you get CUDA OOM errors, halve BATCH_SIZE first. As a last resort, add <span class="ic">model = model.half()</span> to use float16.</p></div>
+    </div>
+  </div>
+
+  <div class="assignment-box">
+    <h3>Assignment 2 — Use Different Data</h3>
+    <p>The model architecture is data-agnostic. Only replace the data loading section.</p>
+
+    <h4>Option A: Any plain text file</h4>
+    <pre><span class="kw">with</span> <span class="fn">open</span>(<span class="st">"your_file.txt"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+    text = f.<span class="fn">read</span>()
+
+chars = <span class="fn">sorted</span>(<span class="fn">set</span>(text))
+vocab_size = <span class="fn">len</span>(chars)            <span class="cm"># auto-computed from your data</span>
+config[<span class="st">"vocab_size"</span>] = vocab_size   <span class="cm"># update config!</span></pre>
+
+    <h4>Option B: Download different text</h4>
+    <pre>DATA_URL = <span class="st">"https://norvig.com/big.txt"</span>        <span class="cm"># English text 6MB</span>
+DATA_URL = <span class="st">"https://www.gutenberg.org/files/2600/2600-0.txt"</span>  <span class="cm"># War and Peace</span></pre>
+
+    <h4>Option C: Code generation</h4>
+    <pre><span class="kw">import</span> os
+text = <span class="st">""</span>
+<span class="kw">for</span> root, dirs, files <span class="kw">in</span> os.<span class="fn">walk</span>(<span class="st">"./your_code_folder"</span>):
+    <span class="kw">for</span> fname <span class="kw">in</span> files:
+        <span class="kw">if</span> fname.<span class="fn">endswith</span>(<span class="st">".py"</span>):
+            <span class="kw">with</span> <span class="fn">open</span>(os.path.<span class="fn">join</span>(root, fname)) <span class="kw">as</span> f:
+                text += f.<span class="fn">read</span>() + <span class="st">"\n"</span>
+<span class="cm"># Then train a Python code autocompleter!</span></pre>
+  </div>
+
+  <div class="assignment-box">
+    <h3>Assignment 3 — Implement BPE Tokenization</h3>
+    <p><strong>Byte Pair Encoding</strong> starts with characters and repeatedly merges the most frequent adjacent pair into one token. After training, common words/subwords become single tokens.</p>
+
+    <h4>The Algorithm</h4>
+    <ul class="step-list">
+      <li><span class="step-num">1</span><div>Start with all unique characters as vocabulary</div></li>
+      <li><span class="step-num">2</span><div>Count frequency of every adjacent pair in corpus</div></li>
+      <li><span class="step-num">3</span><div>Merge the most frequent pair into a new single token</div></li>
+      <li><span class="step-num">4</span><div>Repeat steps 2-3 for N iterations (num_merges)</div></li>
+      <li><span class="step-num">5</span><div>Apply learned merges greedily to encode new text</div></li>
+    </ul>
+
+    <h4>Complete Implementation</h4>
+    <pre><span class="kw">from</span> collections <span class="kw">import</span> Counter
+
+<span class="kw">class</span> <span class="fn">BPETokenizer</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, num_merges=<span class="nm">500</span>):
+        self.num_merges = num_merges
+        self.merges  = {}   <span class="cm"># (pair_tuple) -> merged_string</span>
+        self.vocab   = {}   <span class="cm"># token_string -> token_id</span>
+        self.inv_vocab = {} <span class="cm"># token_id -> token_string</span>
+
+    <span class="kw">def</span> <span class="fn">_get_stats</span>(self, word_freqs):
+        <span class="st">"""Count all adjacent pairs in corpus."""</span>
+        pairs = Counter()
+        <span class="kw">for</span> word, freq <span class="kw">in</span> word_freqs.items():
+            symbols = word.<span class="fn">split</span>()
+            <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(symbols) - <span class="nm">1</span>):
+                pairs[(symbols[i], symbols[i+<span class="nm">1</span>])] += freq
+        <span class="kw">return</span> pairs
+
+    <span class="kw">def</span> <span class="fn">_merge_vocab</span>(self, best_pair, word_freqs):
+        <span class="st">"""Merge the best pair in all words."""</span>
+        bigram = <span class="st">" "</span>.<span class="fn">join</span>(best_pair)
+        merged = <span class="st">""</span>.<span class="fn">join</span>(best_pair)
+        <span class="kw">return</span> {w.<span class="fn">replace</span>(bigram, merged): f <span class="kw">for</span> w, f <span class="kw">in</span> word_freqs.items()}
+
+    <span class="kw">def</span> <span class="fn">train</span>(self, text):
+        <span class="st">"""Learn BPE merges from text corpus."""</span>
+        <span class="cm"># Split text into words, convert each to space-separated chars
+        # The &lt;/w&gt; marker indicates end-of-word: "cat" -> "c a t &lt;/w&gt;"</span>
+        word_freqs = Counter()
+        <span class="kw">for</span> word <span class="kw">in</span> text.<span class="fn">split</span>():
+            word_freqs[<span class="st">" "</span>.<span class="fn">join</span>(<span class="fn">list</span>(word)) + <span class="st">" &lt;/w&gt;"</span>] += <span class="nm">1</span>
+
+        <span class="cm"># Initial vocabulary = all unique characters + &lt;/w&gt;</span>
+        all_chars = <span class="fn">set</span>()
+        <span class="kw">for</span> word <span class="kw">in</span> word_freqs:
+            all_chars.<span class="fn">update</span>(word.<span class="fn">split</span>())
+        self.vocab = {c: i <span class="kw">for</span> i, c <span class="kw">in</span> <span class="fn">enumerate</span>(<span class="fn">sorted</span>(all_chars))}
+
+        <span class="cm"># Iteratively merge the most frequent pair</span>
+        <span class="kw">for</span> merge_idx <span class="kw">in</span> <span class="fn">range</span>(self.num_merges):
+            stats = self.<span class="fn">_get_stats</span>(word_freqs)
+            <span class="kw">if not</span> stats: <span class="kw">break</span>
+
+            best = <span class="fn">max</span>(stats, key=stats.<span class="fn">get</span>)
+            word_freqs = self.<span class="fn">_merge_vocab</span>(best, word_freqs)
+
+            merged_token = <span class="st">""</span>.<span class="fn">join</span>(best)
+            self.merges[best] = merged_token
+            self.vocab[merged_token] = <span class="fn">len</span>(self.vocab)
+
+            <span class="kw">if</span> (merge_idx + <span class="nm">1</span>) % <span class="nm">100</span> == <span class="nm">0</span>:
+                <span class="fn">print</span>(<span class="kw">f</span><span class="st">f"Merge {merge_idx+1}: '{best[0]}' + '{best[1]}' -> '{merged_token}'"</span>)
+
+        self.inv_vocab = {v: k <span class="kw">for</span> k, v <span class="kw">in</span> self.vocab.<span class="fn">items</span>()}
+        <span class="fn">print</span>(<span class="kw">f</span><span class="st">f"Final vocab size: {len(self.vocab)}"</span>)
+
+    <span class="kw">def</span> <span class="fn">encode</span>(self, text):
+        <span class="st">"""Text -> list of token IDs."""</span>
+        ids = []
+        <span class="kw">for</span> word <span class="kw">in</span> text.<span class="fn">split</span>():
+            <span class="cm"># Apply merges greedily in order they were learned</span>
+            symbols = <span class="fn">list</span>(word) + [<span class="st">"&lt;/w&gt;"</span>]
+            <span class="kw">while True</span>:
+                pairs = [
+                    (symbols[i], symbols[i+<span class="nm">1</span>])
+                    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(symbols) - <span class="nm">1</span>)
+                    <span class="kw">if</span> (symbols[i], symbols[i+<span class="nm">1</span>]) <span class="kw">in</span> self.merges
+                ]
+                <span class="kw">if not</span> pairs: <span class="kw">break</span>
+                <span class="cm"># Apply merge with highest priority (earliest learned)</span>
+                merge_order = <span class="fn">list</span>(self.merges.<span class="fn">keys</span>())
+                best = <span class="fn">min</span>(pairs, key=<span class="kw">lambda</span> p: merge_order.<span class="fn">index</span>(p))
+                merged = self.merges[best]
+                <span class="kw">for</span> j <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(symbols) - <span class="nm">1</span>):
+                    <span class="kw">if</span> symbols[j] == best[<span class="nm">0</span>] <span class="kw">and</span> symbols[j+<span class="nm">1</span>] == best[<span class="nm">1</span>]:
+                        symbols = symbols[:j] + [merged] + symbols[j+<span class="nm">2</span>:]
+                        <span class="kw">break</span>
+            ids.<span class="fn">extend</span>([self.vocab.<span class="fn">get</span>(s, <span class="nm">0</span>) <span class="kw">for</span> s <span class="kw">in</span> symbols])
+        <span class="kw">return</span> ids
+
+    <span class="kw">def</span> <span class="fn">decode</span>(self, ids):
+        <span class="st">"""Token IDs -> text string."""</span>
+        <span class="kw">return</span> <span class="st">""</span>.<span class="fn">join</span>([self.inv_vocab.<span class="fn">get</span>(i, <span class="st">"?"</span>) <span class="kw">for</span> i <span class="kw">in</span> ids]).<span class="fn">replace</span>(<span class="st">"&lt;/w&gt;"</span>, <span class="st">" "</span>)
+
+
+<span class="cm">## HOW TO PLUG INTO YOUR NOTEBOOK:</span>
+tokenizer = <span class="fn">BPETokenizer</span>(num_merges=<span class="nm">500</span>)
+tokenizer.<span class="fn">train</span>(text)                                   <span class="cm"># learn merges</span>
+
+vocab_size = <span class="fn">len</span>(tokenizer.vocab)                       <span class="cm"># e.g., 565</span>
+data = torch.<span class="fn">tensor</span>(tokenizer.<span class="fn">encode</span>(text), dtype=torch.long)
+
+encode = tokenizer.encode
+decode = tokenizer.decode
+config[<span class="st">"vocab_size"</span>] = vocab_size                      <span class="cm"># IMPORTANT: update config!</span></pre>
+
+    <div class="callout callout-green">
+      <div class="callout-icon">&#127919;</div>
+      <div><p><strong>What changes in the model?</strong> Only <span class="ic">vocab_size</span> in the config. The embedding table and lm_head grow from [65,256] to [565,256], but everything else is identical. The model now works with subword units instead of characters.</p></div>
+    </div>
+
+    <div class="card">
+      <h4>BPE Effect on Shakespeare</h4>
+      <pre><span class="cm"># After 500 merges, common subwords become single tokens:
+# "the"   -> 1 token  (was 3 chars)
+# "ing"   -> 1 token  (was 3)
+# "thou"  -> 1 token  (was 4)
+# "shall" -> 1 token  (was 5)
+# "tion"  -> 1 token  (was 4)
+
+# "To be, or not to be"
+# Char-level:  20 tokens
+# BPE-500:     ~9 tokens  (2x+ compression!)
+
+# Benefit: same context window (256 tokens) covers more text
+# Attention is O(n^2), so shorter sequences = much faster training</span></pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h4>Common Issues and Fixes</h4>
+    <table>
+      <tr><th>Problem</th><th>Cause</th><th>Fix</th></tr>
+      <tr><td>CUDA OOM</td><td>Batch too large / model too big</td><td>Halve BATCH_SIZE; try float16</td></tr>
+      <tr><td>Loss stuck at 4.17</td><td>Model not learning</td><td>Check LR (try 1e-3 or 1e-4)</td></tr>
+      <tr><td>Loss = NaN</td><td>Exploding gradients</td><td>Reduce LR; grad clipping is already there</td></tr>
+      <tr><td>AssertionError GQA</td><td>d_model % n_heads != 0</td><td>Make d_model divisible by n_heads</td></tr>
+      <tr><td>BPE KeyError</td><td>Char not seen during training</td><td>Use vocab.get(t, 0) with UNK token</td></tr>
+      <tr><td>Repetitive generation</td><td>Greedy decoding</td><td>Divide logits by temperature (0.7-1.0) before softmax</td></tr>
+    </table>
+  </div>
+
+</section>
+
+<div style="padding:40px 0;text-align:center;color:var(--muted);font-size:13px;">
+  <p>MiniLLM Deep Dive Guide &bull; Architecture: RMSNorm + RoPE + GQA + SwiGLU + Weight Tying</p>
+  <p style="margin-top:6px;">Click <strong>Save as PDF</strong> button (bottom-right) &rarr; Print &rarr; Save as PDF</p>
+</div>
+
+</div>
+</body>
+</html>
